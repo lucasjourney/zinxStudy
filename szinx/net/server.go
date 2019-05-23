@@ -2,9 +2,11 @@ package net
 
 import (
 	"fmt"
-	"io"
+	"zinxStudy/szinx/config"
+
+	//"io"
 	"net"
-	"szinx/ziface"
+	"zinxStudy/szinx/ziface"
 )
 
 type Server struct {
@@ -12,14 +14,32 @@ type Server struct {
 	IP        string
 	Port      int
 	Name      string
+	router	  ziface.IRouter
 }
 
-func NewServer(name string) ziface.IServer {
+//定义一个 具体的回显业务 针对type HandleFunc func(*net.TCPConn,[]byte,int) error
+func CallBackBusi(r ziface.IRequest) error {
+	//回显业务
+	fmt.Println("【conn Handle】 CallBack..")
+	data := r.GetData()
+	cnt := r.GetDataLen()
+	conn := r.GetConnection().GetTCPConnection()
+
+	if _, err := conn.Write(data[:cnt]);err !=nil {
+		fmt.Println("write back err ", err)
+		return err
+	}
+
+	return nil
+}
+
+func NewServer() ziface.IServer {
 	return &Server{
 		IPVersion: "tcp4",
-		IP:        "0.0.0.0",
-		Port:      8999,
-		Name:      name,
+		IP:        config.GlobalObject.Host,
+		Port:      config.GlobalObject.Port,
+		Name:      config.GlobalObject.Name,
+		router:nil,
 	}
 }
 
@@ -38,37 +58,27 @@ func (s *Server) Start() {
 		return
 	}
 
+	//生成id的累加器
+	var cid uint32
+	cid = 0
+
+	//3 阻塞等待客户端发送请求，
 	go func() {
 		for {
-			//3.阻塞等待客户端发送请求
-			conn, err := listener.Accept()
+			//阻塞等待客户端请求,
+			conn, err := listener.AcceptTCP()//只是针对TCP协议
 			if err != nil {
-				fmt.Println("listen accept err:", err)
-				return
+				fmt.Println("Accept err", err)
+				continue
 			}
 
-			go func() {
-				for {
-					//4.客户端有数据请求，处理客户端业务（读写）
-					buf := make([]byte, 512)
-					cnt, err := conn.Read(buf)
-					if err != nil && err != io.EOF {
-						fmt.Println("conn read err:", err)
-						return
-					} else if cnt == 0 {
-						fmt.Println("read finished")
-						return
-					}
+			//创建一个Connection对象
+			dealConn := NewConnection(conn, cid, s.router)
+			cid++
 
-					fmt.Printf("recv client buf %s, cnt = %d\n", buf, cnt)
 
-					//回显功能 （业务）
-					if _, err := conn.Write(buf[:cnt]); err != nil {
-						fmt.Println("write back buf err", err)
-						continue
-					}
-				}
-			}()
+			//此时conn就已经和对端客户端连接
+			go dealConn.Start()
 		}
 	}()
 }
@@ -81,4 +91,8 @@ func (s *Server) Serve() {
 
 func (s *Server) Close() {
 	//TODO
+}
+
+func (s *Server) AddRouter(r ziface.IRouter)  {
+	s.router = r
 }

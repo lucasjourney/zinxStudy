@@ -28,4 +28,5 @@ type IServer interface {
 	Serve()
 	Close()
 	Start()
+	AddRouter(r IRouter)
 }

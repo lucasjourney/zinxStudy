@@ -14,8 +14,8 @@ type IConnection interface {
 	//	查看对端客户端的IP和端口
 	GetRemoteAddr() net.Addr
 	//	发送数据的方法Send
-	Send(data []byte) error
+	Send(data []byte, cnt int) error
 }
 
 //业务处理方法 抽象定义
-type HandleFunc func(*net.TCPConn, []byte, int) error
+type HandleFunc func(r IRequest) error

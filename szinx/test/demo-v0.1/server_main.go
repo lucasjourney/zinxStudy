@@ -1,7 +1,7 @@
-package main
+package demo_v0_1
 
 import (
-	"szinx/net"
+	"zinxStudy/szinx/net"
 )
 
 func main() {
