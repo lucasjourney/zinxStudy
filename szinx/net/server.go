@@ -14,25 +14,13 @@ type Server struct {
 	IP        string
 	Port      int
 	Name      string
-	router	  ziface.IRouter
+	//router	  ziface.IRouter
 	//MaxPackageSize uint32
+
+	//消息管理模块 多路由
+	msgHandler ziface.IMsgHandler
 }
 
-//定义一个 具体的回显业务 针对type HandleFunc func(*net.TCPConn,[]byte,int) error
-//func CallBackBusi(r ziface.IRequest) error {
-//	//回显业务
-//	fmt.Println("【conn Handle】 CallBack..")
-//	data := r.GetData()
-//	cnt := r.GetDataLen()
-//	conn := r.GetConnection().GetTCPConnection()
-//
-//	if _, err := conn.Write(data[:cnt]);err !=nil {
-//		fmt.Println("write back err ", err)
-//		return err
-//	}
-//
-//	return nil
-//}
 
 func NewServer() ziface.IServer {
 	return &Server{
@@ -41,7 +29,7 @@ func NewServer() ziface.IServer {
 		Port:      config.GlobalObject.Port,
 		Name:      config.GlobalObject.Name,
 		//MaxPackageSize: config.GlobalObject.MaxPackageSize,
-		router:nil,
+		msgHandler:NewMsgHandler(),
 	}
 }
 
@@ -75,7 +63,7 @@ func (s *Server) Start() {
 			}
 
 			//创建一个Connection对象
-			dealConn := NewConnection(conn, cid, s.router)
+			dealConn := NewConnection(conn, cid, s.msgHandler)
 			cid++
 
 
@@ -95,6 +83,7 @@ func (s *Server) Close() {
 	//TODO
 }
 
-func (s *Server) AddRouter(r ziface.IRouter)  {
-	s.router = r
+func (s *Server) AddRouter(msgID uint32, router ziface.IRouter)  {
+	s.msgHandler.AddRouter(msgID, router)
+	fmt.Println("add router success!")
 }

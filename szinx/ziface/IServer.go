@@ -28,5 +28,5 @@ type IServer interface {
 	Serve()
 	Close()
 	Start()
-	AddRouter(r IRouter)
+	AddRouter(msgID uint32, router IRouter)
 }

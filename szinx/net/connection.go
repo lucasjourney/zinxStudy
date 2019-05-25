@@ -15,17 +15,18 @@ type Connection struct {
 	connID uint32
 	//当前的conn是否是关闭状态`isClosed bool`
 	isClosed bool
-	//与当前链接绑定的客户端业务
-	router ziface.IRouter
+
+	//消息管理模块 多路由
+	msgHandler ziface.IMsgHandler
 }
 
 //创建一个新的连接
-func NewConnection(conn *net.TCPConn, connID uint32, router ziface.IRouter) ziface.IConnection {
+func NewConnection(conn *net.TCPConn, connID uint32, msgHandler ziface.IMsgHandler) ziface.IConnection {
 	c := &Connection{
 		conn:conn,
 		connID:connID,
 		isClosed:false,
-		router: router,
+		msgHandler: msgHandler,
 	}
 
 	return c
@@ -65,17 +66,8 @@ func (c *Connection) startReader() {
 		req := NewRequest(c, msg)
 
 		//路由处理业务
-		go func() {
-			c.router.PreHandle(req)
-			c.router.Handle(req)
-			c.router.PostHandle(req)
-		}()
+		go c.msgHandler.DoMsgHandler(req)
 
-		//将数据 传递给我们 定义好的Handle Callback方法
-		//if err := c.handleAPI(req); err != nil {
-		//	fmt.Println("ConnID", c.connID, "Handle is error", err)
-		//	break
-		//}
 	}
 
 }
