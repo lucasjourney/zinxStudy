@@ -1,6 +1,7 @@
 package net
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -38,17 +39,30 @@ func (c *Connection) startReader() {
 	defer c.Stop()
 
 	for {
-		buf := make([]byte, 512)
-		cnt, err := c.conn.Read(buf)
-		if err != nil && err != io.EOF {
-			fmt.Println("recv buf err", err)
-			continue
-		} else if cnt == 0 {
-			fmt.Println("closed by remoteClient , ConnID is :", c.connID)
-			break
-		}
+		//创建拆包封包对象
+		dp := new(DataPack)
+		//读取客户端消息的头部
+		msgHead := make([]byte, dp.GetHeadLen())
 
-		req := NewRequest(c, buf, cnt)
+		_, err := io.ReadFull(c.GetTCPConnection(), msgHead)
+		if err != nil {
+			fmt.Println("read msg head error:", err)
+			return
+		}
+		msg, err := dp.UnPack(msgHead)
+		if err != nil {
+			fmt.Println("unpack msg error:", err)
+			return
+		}
+		//根据头部，获取数据的长度，读取消息的数据部分
+		msgBody := make([]byte, msg.GetMsgLen())
+		if _, err := io.ReadFull(c.GetTCPConnection(), msgBody); err != nil {
+			fmt.Println("read msg body error:", err)
+			return
+		}
+		msg.SetMsgData(msgBody)
+		//将当前一次性得到的对端客户端请求的数据，封装成一个Request
+		req := NewRequest(c, msg)
 
 		//路由处理业务
 		go func() {
@@ -100,9 +114,23 @@ func (c *Connection)GetRemoteAddr() net.Addr {
 	return c.conn.RemoteAddr()
 }
 //	发送数据的方法Send
-func (c *Connection)Send(data []byte, cnt int) error {
-	if _, err := c.conn.Write(data[:cnt]); err != nil {
-		fmt.Println("send buf error")
+func (c *Connection)Send(msgId uint32, msgData []byte) error {
+	//判断链接是否结束
+	if c.isClosed == true {
+		return errors.New("connection is closed....")
+	}
+
+	dp := new(DataPack)
+	//封装成msg
+	binary, err := dp.Pack(NewMessage(msgId, msgData))
+	if err != nil {
+		fmt.Println("pack err msg id:", msgId)
+		return err
+	}
+
+	//将binaryMsg发送给对端
+	if _, err := c.GetTCPConnection().Write(binary); err != nil {
+		fmt.Println("conn write err msg id:",msgId)
 		return err
 	}
 	return nil

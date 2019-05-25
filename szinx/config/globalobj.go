@@ -21,9 +21,9 @@ func init()  {
 	GlobalObject = &GlobalObj{
 		//默认值
 		Host:"127.0.0.1",
-		Port:9999,
+		Port:7777,
 		Name:"zinx app",
-		Version:"v0.4",
+		Version:"v0.5",
 		MaxPackageSize:4096,
 	}
 

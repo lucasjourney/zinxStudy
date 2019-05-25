@@ -15,23 +15,24 @@ type Server struct {
 	Port      int
 	Name      string
 	router	  ziface.IRouter
+	//MaxPackageSize uint32
 }
 
 //定义一个 具体的回显业务 针对type HandleFunc func(*net.TCPConn,[]byte,int) error
-func CallBackBusi(r ziface.IRequest) error {
-	//回显业务
-	fmt.Println("【conn Handle】 CallBack..")
-	data := r.GetData()
-	cnt := r.GetDataLen()
-	conn := r.GetConnection().GetTCPConnection()
-
-	if _, err := conn.Write(data[:cnt]);err !=nil {
-		fmt.Println("write back err ", err)
-		return err
-	}
-
-	return nil
-}
+//func CallBackBusi(r ziface.IRequest) error {
+//	//回显业务
+//	fmt.Println("【conn Handle】 CallBack..")
+//	data := r.GetData()
+//	cnt := r.GetDataLen()
+//	conn := r.GetConnection().GetTCPConnection()
+//
+//	if _, err := conn.Write(data[:cnt]);err !=nil {
+//		fmt.Println("write back err ", err)
+//		return err
+//	}
+//
+//	return nil
+//}
 
 func NewServer() ziface.IServer {
 	return &Server{
@@ -39,6 +40,7 @@ func NewServer() ziface.IServer {
 		IP:        config.GlobalObject.Host,
 		Port:      config.GlobalObject.Port,
 		Name:      config.GlobalObject.Name,
+		//MaxPackageSize: config.GlobalObject.MaxPackageSize,
 		router:nil,
 	}
 }
