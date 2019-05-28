@@ -27,7 +27,7 @@ func main() {
 	for {
 		dp := net2.NewDataPack()
 
-		binaryMsg, err := dp.Pack(net2.NewMessage(1, []byte("Zinx 0.6 client Test Message..")))
+		binaryMsg, err := dp.Pack(net2.NewMessage(1, []byte("Zinx 0.7 client Test Message..")))
 		if err != nil {
 			fmt.Println("Pack error ", err)
 			return
@@ -59,7 +59,7 @@ func main() {
 			fmt.Println("---> Recv Server Msg : id = ", msg.Id, "len = ", msg.Datalen, " data = ", string(msg.Data))
 		}
 
-		time.Sleep(1 *time.Second)
+		//time.Sleep(1 *time.Second)
 	}
 
 }

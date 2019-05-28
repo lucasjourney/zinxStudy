@@ -12,6 +12,13 @@ type GlobalObj struct {
 
 	Version string
 	MaxPackageSize uint32
+
+	//工作池worker数量
+	WorkerPoolSize uint32
+	//消息队列长度
+	MaxWorkerTaskLen uint32
+	//最大链接数
+	MaxConn uint32
 }
 
 //配置一个全局变量
@@ -25,6 +32,9 @@ func init()  {
 		Name:"zinx app",
 		Version:"v0.5",
 		MaxPackageSize:4096,
+		WorkerPoolSize:4,
+		MaxWorkerTaskLen:8,
+		MaxConn:4,
 	}
 
 	GlobalObject.loadConfig()

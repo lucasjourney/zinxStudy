@@ -29,4 +29,16 @@ type IServer interface {
 	Close()
 	Start()
 	AddRouter(msgID uint32, router IRouter)
+	GetConnManager() IConnManager
+
+	//注册 创建链接之后的钩子函数
+	AddAfterCreateHookFunc(HookFunc)
+	//注册 删除链接之前的钩子函数
+	AddBeforeDeleteCreateHookFunc(HookFunc)
+	//调用 创建链接之后的钩子函数
+	CallAfterCreateHookFunc(conn IConnection)
+	//调用 删除链接之前的钩子函数
+	CallBeforeDeleteCreateHookFunc(conn IConnection)
 }
+
+type HookFunc func (conn IConnection)

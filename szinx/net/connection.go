@@ -5,10 +5,14 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
+	"zinxStudy/szinx/config"
 	"zinxStudy/szinx/ziface"
 )
 
 type Connection struct {
+	//所属server
+	server ziface.IServer
 	//原生套接字 `net.Conn`
 	conn *net.TCPConn
 	//链接ID `uint32`
@@ -16,17 +20,31 @@ type Connection struct {
 	//当前的conn是否是关闭状态`isClosed bool`
 	isClosed bool
 
-	//消息管理模块 多路由
+	//消息管理模块 多路由 消息队列
 	msgHandler ziface.IMsgHandler
+
+	//添加一个Reader和Writer通信的Channel
+	msgChan chan []byte
+	//创建一个Channel 用来通知Writer conn已经关闭
+	writerExitChan chan bool
+
+	//链接模块的属性集合
+	property map[string] interface{}
+	//保护当前的property的锁
+	propertyLock sync.RWMutex
 }
 
 //创建一个新的连接
-func NewConnection(conn *net.TCPConn, connID uint32, msgHandler ziface.IMsgHandler) ziface.IConnection {
+func NewConnection(server ziface.IServer, conn *net.TCPConn, connID uint32, msgHandler ziface.IMsgHandler) ziface.IConnection {
 	c := &Connection{
-		conn:conn,
-		connID:connID,
-		isClosed:false,
-		msgHandler: msgHandler,
+		server:         server,
+		conn:           conn,
+		connID:         connID,
+		isClosed:       false,
+		msgHandler:     msgHandler,
+		msgChan:        make(chan []byte),
+		writerExitChan: make(chan bool),
+		property:make(map[string]interface{}),
 	}
 
 	return c
@@ -35,8 +53,8 @@ func NewConnection(conn *net.TCPConn, connID uint32, msgHandler ziface.IMsgHandl
 //针对链接读业务的方法
 func (c *Connection) startReader() {
 	//从对端读数据
-	fmt.Println("Reader go is startin....")
-	defer fmt.Println("connID = ", c.connID, "Reader is exit, remote addr is = ", c.GetRemoteAddr().String())
+	fmt.Println("[Reader Goroutine is startin]....")
+	defer fmt.Println("**Reader Goroutine Stop...connID = ", c.connID, "Reader is exit, remote addr is = ", c.GetRemoteAddr().String())
 	defer c.Stop()
 
 	for {
@@ -66,10 +84,34 @@ func (c *Connection) startReader() {
 		req := NewRequest(c, msg)
 
 		//路由处理业务
-		go c.msgHandler.DoMsgHandler(req)
+		if config.GlobalObject.WorkerPoolSize > 0 {
+			c.msgHandler.SendMsgToTaskQueue(req)
+		} else {
+			go c.msgHandler.DoMsgHandler(req)
+		}
 
 	}
 
+}
+
+//写消息的Goroutine 专门负责给客户端发送消息
+func (c *Connection) StartWriter() {
+	fmt.Println("[Writer Goroutine is Started]...")
+	defer fmt.Println("**Writer Goroutine Stop...")
+	//IO多路复用
+	for {
+		select {
+		case data := <-c.msgChan:
+			if _, err := c.conn.Write(data); err != nil {
+				fmt.Println("Send data error", err)
+				
+				return
+			}
+		case <-c.writerExitChan:
+			//代表reader已经退出了，writer也要退出
+			return
+		}
+	}
 }
 
 //	启动链接：当链接模块进行，读写操作
@@ -78,11 +120,16 @@ func (c *Connection) Start() {
 	//先进行读业务
 	go c.startReader()
 
+	//进行写业务
+	go c.StartWriter()
+
 	//TODO 进行写业务
 }
 
 //	停止链接：关闭套接字/做一些资源回收
-func (c *Connection)Stop() {
+func (c *Connection) Stop() {
+	//调用钩子函数
+	c.server.CallBeforeDeleteCreateHookFunc(c)
 
 	//如果已经关闭则返回
 	if c.isClosed == true {
@@ -90,23 +137,35 @@ func (c *Connection)Stop() {
 	}
 	//回收资源
 	c.isClosed = true
+	//通知Writer结束
+	c.writerExitChan <- true
 
 	c.conn.Close()
+
+	//将链接在链接管理模块中移除
+	c.server.GetConnManager().Remove(c.connID)
+
+	close(c.msgChan)
+	close(c.writerExitChan)
 }
+
 //	获取链接ID
-func (c *Connection)GetConnID() uint32 {
+func (c *Connection) GetConnID() uint32 {
 	return c.connID
 }
+
 //	获取链接的原生socket套接字
-func (c *Connection)GetTCPConnection() *net.TCPConn {
+func (c *Connection) GetTCPConnection() *net.TCPConn {
 	return c.conn
 }
+
 //	查看对端客户端的IP和端口
-func (c *Connection)GetRemoteAddr() net.Addr {
+func (c *Connection) GetRemoteAddr() net.Addr {
 	return c.conn.RemoteAddr()
 }
+
 //	发送数据的方法Send
-func (c *Connection)Send(msgId uint32, msgData []byte) error {
+func (c *Connection) Send(msgId uint32, msgData []byte) error {
 	//判断链接是否结束
 	if c.isClosed == true {
 		return errors.New("connection is closed....")
@@ -114,16 +173,37 @@ func (c *Connection)Send(msgId uint32, msgData []byte) error {
 
 	dp := new(DataPack)
 	//封装成msg
-	binary, err := dp.Pack(NewMessage(msgId, msgData))
+	binaryMsg, err := dp.Pack(NewMessage(msgId, msgData))
 	if err != nil {
 		fmt.Println("pack err msg id:", msgId)
 		return err
 	}
 
-	//将binaryMsg发送给对端
-	if _, err := c.GetTCPConnection().Write(binary); err != nil {
-		fmt.Println("conn write err msg id:",msgId)
-		return err
-	}
+	//将要打包好的二进制数据发送给channel，让writer去写
+	c.msgChan <- binaryMsg
+
 	return nil
+}
+
+//  设置属性
+func (c *Connection)SetProperty(key string, value interface{}) {
+	c.propertyLock.Lock()
+	defer c.propertyLock.Unlock()
+
+	c.property[key] = value
+}
+//  获取属性
+func (c *Connection)GetProperty(key string)(interface{}, error) {
+	c.propertyLock.RLock()
+	defer c.propertyLock.RUnlock()
+
+	if value, ok := c.property[key]; ok {
+		return value, nil
+	} else {
+		return nil, errors.New("error:connection property do not have property:" + key)
+	}
+}
+//  删除属性
+func (c *Connection)RemoveProperty(key string) {
+	delete(c.property, key)
 }
